@@ -76,6 +76,10 @@ const elements = {
   submitCartButton: document.querySelector('#submit-cart-button'),
   ordersList: document.querySelector('#orders-list'),
   ordersEmptyState: document.querySelector('#orders-empty-state'),
+  favoritesList: document.querySelector('#favorites-list'),
+  favoritesEmptyState: document.querySelector('#favorites-empty-state'),
+  historyList: document.querySelector('#history-list'),
+  historyEmptyState: document.querySelector('#history-empty-state'),
   copySummaryButton: document.querySelector('#copy-summary-button'),
   clearOrdersButton: document.querySelector('#clear-orders-button'),
   adminDanger: document.querySelector('#admin-danger'),
@@ -114,6 +118,7 @@ async function boot() {
       renderMenuList();
       renderCart();
       renderOrdersSummary();
+      renderPersonalOrderPanels();
 
       if (!hasUsableAccessToken()) {
         clearSessionState();
@@ -329,6 +334,7 @@ async function refreshAppData(showDoneToast = false) {
     renderMenuList();
     renderCart();
     renderOrdersSummary();
+    renderPersonalOrderPanels();
     persistSessionState();
 
     if (showDoneToast) {
@@ -947,6 +953,110 @@ function renderOrdersSummary() {
     .join('');
 }
 
+function renderPersonalOrderPanels() {
+  const myOrders = getCurrentUserOrders();
+  renderFavoriteItems(myOrders);
+  renderOrderHistory(myOrders);
+}
+
+function renderFavoriteItems(myOrders) {
+  const favoriteItems = getFavoriteItems(myOrders);
+  elements.favoritesEmptyState.classList.toggle('hidden', favoriteItems.length > 0);
+
+  if (favoriteItems.length === 0) {
+    elements.favoritesList.innerHTML = '';
+    return;
+  }
+
+  elements.favoritesList.innerHTML = favoriteItems
+    .map((item) => {
+      return `
+        <article class="favorite-item">
+          <div>
+            <h3 class="favorite-item-name">${escapeHtml(item.name)}</h3>
+            <p class="favorite-item-meta">${escapeHtml(item.restaurant)} ・ 最近備註：${escapeHtml(item.note || '無')} ・ ${item.count} 次</p>
+          </div>
+          <button
+            type="button"
+            class="ghost-button"
+            data-favorite-restaurant="${escapeHtmlAttribute(item.restaurant)}"
+            data-favorite-name="${escapeHtmlAttribute(item.name)}"
+            data-favorite-price="${item.price}"
+            data-favorite-note="${escapeHtmlAttribute(item.note || '')}"
+          >
+            再點一次
+          </button>
+        </article>
+      `;
+    })
+    .join('');
+
+  elements.favoritesList.querySelectorAll('[data-favorite-name]').forEach((button) => {
+    button.addEventListener('click', () => {
+      addItemToCart(
+        {
+          restaurant: button.dataset.favoriteRestaurant || '',
+          name: button.dataset.favoriteName || '',
+          price: Number(button.dataset.favoritePrice || 0),
+        },
+        button.dataset.favoriteNote || '',
+      );
+    });
+  });
+}
+
+function renderOrderHistory(myOrders) {
+  const recentOrders = [...myOrders]
+    .sort((left, right) => right.createdAt - left.createdAt)
+    .slice(0, 8);
+
+  elements.historyEmptyState.classList.toggle('hidden', recentOrders.length > 0);
+
+  if (recentOrders.length === 0) {
+    elements.historyList.innerHTML = '';
+    return;
+  }
+
+  elements.historyList.innerHTML = recentOrders
+    .map((order) => {
+      return `
+        <article class="history-item">
+          <div class="history-item-header">
+            <div>
+              <h3 class="history-item-name">${escapeHtml(order.itemName)}</h3>
+              <p class="history-item-meta">${escapeHtml(order.restaurant)} ・ ${formatDateTime(order.createdAt)} ・ $${order.amount}</p>
+            </div>
+            <button
+              type="button"
+              class="ghost-button"
+              data-history-restaurant="${escapeHtmlAttribute(order.restaurant)}"
+              data-history-name="${escapeHtmlAttribute(order.itemName)}"
+              data-history-price="${order.amount}"
+              data-history-note="${escapeHtmlAttribute(order.note || '')}"
+            >
+              再加一次
+            </button>
+          </div>
+          <p class="history-item-note">備註：${escapeHtml(order.note || '無')}</p>
+        </article>
+      `;
+    })
+    .join('');
+
+  elements.historyList.querySelectorAll('[data-history-name]').forEach((button) => {
+    button.addEventListener('click', () => {
+      addItemToCart(
+        {
+          restaurant: button.dataset.historyRestaurant || '',
+          name: button.dataset.historyName || '',
+          price: Number(button.dataset.historyPrice || 0),
+        },
+        button.dataset.historyNote || '',
+      );
+    });
+  });
+}
+
 // 未授權畫面只保留重新選帳號的動作，避免誤以為系統故障。
 function renderUnauthorizedView() {
   elements.userBadge.classList.add('hidden');
@@ -1045,6 +1155,8 @@ function resetState() {
   elements.menuList.innerHTML = '';
   elements.cartList.innerHTML = '';
   elements.ordersList.innerHTML = '';
+  elements.favoritesList.innerHTML = '';
+  elements.historyList.innerHTML = '';
 }
 
 // 將 Menu 工作表轉成易用的物件結構，並且過濾掉缺少必要欄位的髒資料。
@@ -1282,6 +1394,43 @@ function handleCategoryFilterClick(event) {
   renderMenuFilters();
   renderMenuList();
   persistSessionState();
+}
+
+function getCurrentUserOrders() {
+  if (!state.userRecord?.email) {
+    return [];
+  }
+
+  return state.todayOrders.filter((order) => order.email === state.userRecord.email);
+}
+
+function getFavoriteItems(myOrders) {
+  const favoritesMap = new Map();
+
+  myOrders.forEach((order) => {
+    const key = `${order.restaurant}__${order.itemName}`;
+    const currentValue = favoritesMap.get(key) || {
+      restaurant: order.restaurant,
+      name: order.itemName,
+      price: order.amount,
+      note: order.note,
+      count: 0,
+      lastOrderedAt: order.createdAt,
+    };
+
+    currentValue.count += 1;
+    if (order.createdAt > currentValue.lastOrderedAt) {
+      currentValue.lastOrderedAt = order.createdAt;
+      currentValue.note = order.note;
+      currentValue.price = order.amount;
+    }
+
+    favoritesMap.set(key, currentValue);
+  });
+
+  return [...favoritesMap.values()]
+    .sort((left, right) => right.count - left.count || right.lastOrderedAt - left.lastOrderedAt)
+    .slice(0, 5);
 }
 
 function padNumber(value) {
