@@ -9,19 +9,26 @@
  */
 
 // --- 設定 ---
+const REQUIRED_CONFIG_KEYS = {
+    CLIENT_ID: 'VITE_GOOGLE_CLIENT_ID',
+    API_KEY: 'VITE_GOOGLE_API_KEY',
+    SPREADSHEET_ID: 'VITE_GOOGLE_SPREADSHEET_ID'
+};
+
 const CONFIG = {
-    // 請填入您的 GCP Client ID
-    CLIENT_ID: '',
-    // 請填入您的 GCP API Key
-    API_KEY: '',
-    // 請填入您的 Google Sheet ID
-    SPREADSHEET_ID: '',
+    CLIENT_ID: import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? '',
+    API_KEY: import.meta.env.VITE_GOOGLE_API_KEY?.trim() ?? '',
+    SPREADSHEET_ID: import.meta.env.VITE_GOOGLE_SPREADSHEET_ID?.trim() ?? '',
 
     // Google Sheets Discovery Doc
     DISCOVERY_DOC: 'https://sheets.googleapis.com/$discovery/rest?version=v4',
     // 授權範圍 (讀寫試算表 + 使用者資訊)
     SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile openid',
 };
+
+const missingConfigKeys = Object.entries(REQUIRED_CONFIG_KEYS)
+    .filter(([configKey]) => !CONFIG[configKey])
+    .map(([, envKey]) => envKey);
 
 // --- 全域變數 ---
 let tokenClient;
@@ -62,6 +69,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (event.target == modal) {
             closeOrdersModal();
         }
+    }
+
+    if (missingConfigKeys.length > 0) {
+        showConfigError(missingConfigKeys);
+        return;
     }
 
     // 先初始化 GAPI，完成後再嘗試自動登入
@@ -297,6 +309,26 @@ function handleSignOut() {
     document.getElementById('app-section').classList.add('hidden');
     document.getElementById('order-summary-section').classList.add('hidden');
     showLogin();
+}
+
+function showConfigError(missingKeys) {
+    const loginSection = document.getElementById('login-section');
+    const statusSection = document.getElementById('status-section');
+    const statusText = document.getElementById('status-text');
+
+    if (loginSection) {
+        loginSection.classList.add('hidden');
+    }
+
+    if (statusSection) {
+        statusSection.classList.remove('hidden');
+    }
+
+    if (statusText) {
+        statusText.textContent = `缺少環境變數：${missingKeys.join(', ')}。請建立 .env 後再重新啟動 Vite。`;
+    }
+
+    console.error('Missing required Vite env vars:', missingKeys);
 }
 
 
