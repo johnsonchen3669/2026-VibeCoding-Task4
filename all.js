@@ -8,17 +8,25 @@ const CONFIG = {
   apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
   spreadsheetId: import.meta.env.VITE_GOOGLE_SPREADSHEET_ID,
   scopes: [
-    'openid',
-    'email',
-    'profile',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/spreadsheets',
   ].join(' '),
 };
+
+const REQUIRED_SCOPES = [
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/spreadsheets',
+];
+
+const STORAGE_KEY = 'company-ordering-tool-session';
 
 // 全域狀態統一放在單一物件，讓畫面渲染與 API 流程都能共用同一份資料來源。
 const state = {
   tokenClient: null,
   accessToken: '',
+  accessTokenExpiresAt: 0,
   userInfo: null,
   userRecord: null,
   usersMap: new Map(),
@@ -28,6 +36,8 @@ const state = {
   todayOrders: [],
   isRefreshingToken: false,
   tokenRefreshPromise: null,
+  authMode: 'interactive',
+  scopeRetryAttempted: false,
 };
 
 const elements = {
@@ -78,6 +88,26 @@ async function boot() {
     setLoadingText('正在載入 Google 登入服務...');
     await waitForGoogleIdentity();
     initTokenClient();
+    const hasCachedSession = restoreSessionState();
+
+    if (hasCachedSession) {
+      renderUserBadge();
+      showOnly('app');
+      renderAdminArea();
+      renderTodayRestaurantChips();
+      renderMenuList();
+      renderOrdersSummary();
+
+      if (!hasUsableAccessToken()) {
+        clearSessionState();
+        resetState();
+        showOnly('login');
+        showToast('登入已過期，請重新授權。', true);
+      }
+
+      return;
+    }
+
     showOnly('login');
   } catch (error) {
     console.error(error);
@@ -125,11 +155,38 @@ function initTokenClient() {
     scope: CONFIG.scopes,
     callback: async (tokenResponse) => {
       if (tokenResponse?.error) {
+        if (state.authMode === 'silent') {
+          clearSessionState();
+          resetState();
+          showOnly('login');
+          return;
+        }
+
         showToast(`登入失敗：${tokenResponse.error}`, true);
         return;
       }
 
+      if (!hasRequiredScopes(tokenResponse)) {
+        if (!state.scopeRetryAttempted && state.authMode !== 'silent') {
+          state.scopeRetryAttempted = true;
+          state.tokenClient.requestAccessToken({
+            prompt: 'consent',
+            scope: CONFIG.scopes,
+          });
+          return;
+        }
+
+        clearSessionState();
+        resetState();
+        showOnly('login');
+        showToast('登入成功，但未取得操作 Google Sheets 所需權限，請重新授權。', true);
+        return;
+      }
+
+      state.scopeRetryAttempted = false;
+
       state.accessToken = tokenResponse.access_token;
+      state.accessTokenExpiresAt = Date.now() + Number(tokenResponse.expires_in || 0) * 1000;
 
       try {
         setLoadingText('正在確認使用者身分與權限...');
@@ -137,22 +194,31 @@ function initTokenClient() {
         await handleAuthorizedSession();
       } catch (error) {
         console.error(error);
+        resetState();
         showOnly('login');
         showToast(getErrorMessage(error), true);
+      } finally {
+        state.authMode = 'interactive';
       }
     },
   });
 }
 
 // 第一次登入使用 consent，後續 token 過期時則嘗試用 prompt=none 靜默刷新。
-function requestAccessToken(withConsent = false) {
+function requestAccessToken(withConsent = false, silent = false) {
   if (!state.tokenClient) {
     showToast('Google 登入服務尚未初始化完成。', true);
     return;
   }
 
+  state.authMode = silent ? 'silent' : 'interactive';
+  if (!silent) {
+    state.scopeRetryAttempted = false;
+  }
+
   state.tokenClient.requestAccessToken({
-    prompt: withConsent ? 'consent' : '',
+    prompt: silent ? 'none' : withConsent ? 'consent' : '',
+    scope: CONFIG.scopes,
   });
 }
 
@@ -162,6 +228,7 @@ async function handleAuthorizedSession() {
   state.userRecord = await checkUserPermission(state.userInfo.email);
 
   if (!state.userRecord) {
+    clearSessionState();
     renderUnauthorizedView();
     return;
   }
@@ -239,6 +306,7 @@ async function refreshAppData(showDoneToast = false) {
     renderTodayRestaurantChips();
     renderMenuList();
     renderOrdersSummary();
+    persistSessionState();
 
     if (showDoneToast) {
       showToast('資料已重新整理。');
@@ -253,6 +321,13 @@ async function refreshAppData(showDoneToast = false) {
 
 // 所有 Sheets API 請求都統一走這個封裝，方便集中處理授權標頭、API key 與 401 重試邏輯。
 async function sheetsRequest(path, options = {}, retry = true) {
+  if (!hasUsableAccessToken()) {
+    clearSessionState();
+    resetState();
+    showOnly('login');
+    throw new Error('登入已過期，請重新授權後再試。');
+  }
+
   const separator = path.includes('?') ? '&' : '?';
   const apiKeyQuery = CONFIG.apiKey ? `${separator}key=${encodeURIComponent(CONFIG.apiKey)}` : '';
   const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.spreadsheetId}/${path}${apiKeyQuery}`, {
@@ -338,6 +413,7 @@ async function refreshAccessToken() {
       }
 
       state.accessToken = tokenResponse.access_token;
+      state.accessTokenExpiresAt = Date.now() + Number(tokenResponse.expires_in || 0) * 1000;
 
       try {
         state.userInfo = state.userInfo || (await fetchUserInfo());
@@ -348,7 +424,7 @@ async function refreshAccessToken() {
       resolve();
     };
 
-    state.tokenClient.requestAccessToken({ prompt: '' });
+    state.tokenClient.requestAccessToken({ prompt: 'none' });
   });
 
   try {
@@ -731,6 +807,7 @@ function showToast(message, isError = false) {
 function handleLogout() {
   if (state.accessToken && window.google?.accounts?.oauth2) {
     window.google.accounts.oauth2.revoke(state.accessToken, () => {
+      clearSessionState();
       resetState();
       showOnly('login');
       showToast('已登出，請重新選擇 Google 帳號。');
@@ -738,6 +815,7 @@ function handleLogout() {
     return;
   }
 
+  clearSessionState();
   resetState();
   showOnly('login');
 }
@@ -745,6 +823,7 @@ function handleLogout() {
 // 重置暫存狀態，確保登入/登出切換時不會殘留前一次資料。
 function resetState() {
   state.accessToken = '';
+  state.accessTokenExpiresAt = 0;
   state.userInfo = null;
   state.userRecord = null;
   state.usersMap = new Map();
@@ -752,6 +831,7 @@ function resetState() {
   state.todayRestaurants = [];
   state.menuItems = [];
   state.todayOrders = [];
+  state.authMode = 'interactive';
 
   elements.userBadge.classList.add('hidden');
   elements.logoutButton.classList.add('hidden');
@@ -855,13 +935,101 @@ function formatDateDisplay(date) {
 
 // Sheets 字串日期採手動解析，避免不同瀏覽器對斜線日期格式的內建解析有落差。
 function parseDateTime(value) {
-  const match = value.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?$/);
+  const normalizedValue = String(value || '').trim();
+
+  if (/^\d+(?:\.\d+)?$/.test(normalizedValue)) {
+    const serialNumber = Number(normalizedValue);
+
+    if (Number.isFinite(serialNumber)) {
+      return parseGoogleSheetsSerialDate(serialNumber);
+    }
+  }
+
+  const directDate = new Date(normalizedValue);
+
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate;
+  }
+
+  const match = normalizedValue.match(
+    /^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/,
+  );
   if (!match) {
     return null;
   }
 
-  const [, year, month, day, hour = '0', minute = '0'] = match;
-  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+  const [, year, month, day, hour = '0', minute = '0', second = '0'] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+}
+
+function persistSessionState() {
+  if (!state.userInfo || !state.userRecord) {
+    return;
+  }
+
+  const sessionSnapshot = {
+    accessToken: state.accessToken,
+    accessTokenExpiresAt: state.accessTokenExpiresAt,
+    userInfo: state.userInfo,
+    userRecord: state.userRecord,
+    users: [...state.usersMap.entries()],
+    restaurants: state.restaurants,
+    todayRestaurants: state.todayRestaurants,
+    menuItems: state.menuItems,
+    todayOrders: state.todayOrders.map((order) => ({
+      ...order,
+      createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
+    })),
+  };
+
+  window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(sessionSnapshot));
+}
+
+function restoreSessionState() {
+  const rawValue = window.sessionStorage.getItem(STORAGE_KEY);
+  if (!rawValue) {
+    return false;
+  }
+
+  try {
+    const sessionSnapshot = JSON.parse(rawValue);
+    state.accessToken = sessionSnapshot.accessToken || '';
+    state.accessTokenExpiresAt = Number(sessionSnapshot.accessTokenExpiresAt || 0);
+    state.userInfo = sessionSnapshot.userInfo || null;
+    state.userRecord = sessionSnapshot.userRecord || null;
+    state.usersMap = new Map(sessionSnapshot.users || []);
+    state.restaurants = sessionSnapshot.restaurants || [];
+    state.todayRestaurants = sessionSnapshot.todayRestaurants || [];
+    state.menuItems = sessionSnapshot.menuItems || [];
+    state.todayOrders = (sessionSnapshot.todayOrders || []).map((order) => ({
+      ...order,
+      createdAt: parseDateTime(order.createdAt),
+    }));
+
+    return Boolean(state.userInfo && state.userRecord);
+  } catch (error) {
+    console.error(error);
+    clearSessionState();
+    return false;
+  }
+}
+
+function clearSessionState() {
+  window.sessionStorage.removeItem(STORAGE_KEY);
+}
+
+function hasUsableAccessToken() {
+  return Boolean(state.accessToken) && state.accessTokenExpiresAt > Date.now() + 10_000;
+}
+
+function hasRequiredScopes(tokenResponse) {
+  return window.google.accounts.oauth2.hasGrantedAllScopes(tokenResponse, ...REQUIRED_SCOPES);
+}
+
+function parseGoogleSheetsSerialDate(serialNumber) {
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  const baseDate = new Date(1899, 11, 30);
+  return new Date(baseDate.getTime() + serialNumber * millisecondsPerDay);
 }
 
 function padNumber(value) {
