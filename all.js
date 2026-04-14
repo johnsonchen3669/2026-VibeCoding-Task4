@@ -34,6 +34,7 @@ const state = {
   todayRestaurants: [],
   menuItems: [],
   todayOrders: [],
+  cartItems: [],
   isRefreshingToken: false,
   tokenRefreshPromise: null,
   authMode: 'interactive',
@@ -59,6 +60,12 @@ const elements = {
   todayRestaurantsChip: document.querySelector('#today-restaurants-chip'),
   menuList: document.querySelector('#menu-list'),
   menuEmptyState: document.querySelector('#menu-empty-state'),
+  cartBadge: document.querySelector('#cart-badge'),
+  cartItemCount: document.querySelector('#cart-item-count'),
+  cartTotalPrice: document.querySelector('#cart-total-price'),
+  cartEmptyState: document.querySelector('#cart-empty-state'),
+  cartList: document.querySelector('#cart-list'),
+  submitCartButton: document.querySelector('#submit-cart-button'),
   ordersList: document.querySelector('#orders-list'),
   ordersEmptyState: document.querySelector('#orders-empty-state'),
   copySummaryButton: document.querySelector('#copy-summary-button'),
@@ -96,6 +103,7 @@ async function boot() {
       renderAdminArea();
       renderTodayRestaurantChips();
       renderMenuList();
+      renderCart();
       renderOrdersSummary();
 
       if (!hasUsableAccessToken()) {
@@ -123,6 +131,7 @@ function bindEvents() {
   elements.logoutUnauthorizedButton.addEventListener('click', handleLogout);
   elements.refreshButton.addEventListener('click', () => refreshAppData(true));
   elements.saveConfigButton.addEventListener('click', saveTodayConfig);
+  elements.submitCartButton.addEventListener('click', submitCart);
   elements.copySummaryButton.addEventListener('click', copyOrderSummary);
   elements.clearOrdersButton.addEventListener('click', clearAllOrders);
 }
@@ -305,6 +314,7 @@ async function refreshAppData(showDoneToast = false) {
     renderAdminArea();
     renderTodayRestaurantChips();
     renderMenuList();
+    renderCart();
     renderOrdersSummary();
     persistSessionState();
 
@@ -472,36 +482,157 @@ async function saveTodayConfig() {
   }
 }
 
-// 每張餐點卡片都可以直接點餐，會把目前時間、登入者 Email、餐點與備註寫進 Orders 工作表。
-async function submitOrder(item, noteValue, button) {
+// 購物車送出時會將每個品項依數量展開成多列，一次寫入 Orders 工作表。
+async function submitCart() {
   if (!state.userRecord) {
     showToast('尚未登入，請先完成 Google 登入。', true);
-    return false;
+    return;
   }
 
-  setActionLoading(button, true, '送出中...');
+  if (state.cartItems.length === 0) {
+    showToast('購物車目前沒有任何餐點。', true);
+    return;
+  }
+
+  setActionLoading(elements.submitCartButton, true, '送出中...');
 
   try {
-    const row = [
-      formatDateTime(new Date()),
-      state.userRecord.email,
-      item.restaurant,
-      item.name,
-      item.price,
-      noteValue.trim(),
-    ];
+    const now = formatDateTime(new Date());
+    const rows = state.cartItems.flatMap((cartItem) => {
+      return Array.from({ length: cartItem.quantity }, () => [
+        now,
+        state.userRecord.email,
+        cartItem.restaurant,
+        cartItem.name,
+        cartItem.price,
+        cartItem.note,
+      ]);
+    });
 
-    await sheetsAppend('Orders!A:F', [row]);
-    showToast(`已送出 ${item.name}。`);
+    await sheetsAppend('Orders!A:F', rows);
+    state.cartItems = [];
+    renderCart();
+    showToast('購物車餐點已全部送出。');
     await refreshAppData(false);
-    return true;
   } catch (error) {
     console.error(error);
     showToast(getErrorMessage(error), true);
-    return false;
   } finally {
-    setActionLoading(button, false, '點餐');
+    setActionLoading(elements.submitCartButton, false, '一次送出購物車');
   }
+}
+
+function addItemToCart(item, noteValue) {
+  const normalizedNote = noteValue.trim();
+  const existingItem = state.cartItems.find(
+    (cartItem) =>
+      cartItem.restaurant === item.restaurant &&
+      cartItem.name === item.name &&
+      cartItem.note === normalizedNote,
+  );
+
+  if (existingItem) {
+    existingItem.quantity += 1;
+  } else {
+    state.cartItems.push({
+      id: createCartItemId(),
+      restaurant: item.restaurant,
+      name: item.name,
+      price: item.price,
+      note: normalizedNote,
+      quantity: 1,
+    });
+  }
+
+  renderCart();
+  persistSessionState();
+  showToast(`已加入購物車：${item.name}`);
+}
+
+function updateCartItemQuantity(cartItemId, delta) {
+  const targetItem = state.cartItems.find((cartItem) => cartItem.id === cartItemId);
+  if (!targetItem) {
+    return;
+  }
+
+  targetItem.quantity += delta;
+
+  if (targetItem.quantity <= 0) {
+    state.cartItems = state.cartItems.filter((cartItem) => cartItem.id !== cartItemId);
+  }
+
+  renderCart();
+  persistSessionState();
+}
+
+function removeCartItem(cartItemId) {
+  state.cartItems = state.cartItems.filter((cartItem) => cartItem.id !== cartItemId);
+  renderCart();
+  persistSessionState();
+}
+
+function renderCart() {
+  const totalQuantity = state.cartItems.reduce((sum, cartItem) => sum + cartItem.quantity, 0);
+  const totalPrice = state.cartItems.reduce((sum, cartItem) => sum + cartItem.quantity * cartItem.price, 0);
+
+  elements.cartBadge.textContent = `${totalQuantity} 項`;
+  elements.cartItemCount.textContent = String(totalQuantity);
+  elements.cartTotalPrice.textContent = `$${totalPrice}`;
+  elements.cartEmptyState.classList.toggle('hidden', state.cartItems.length > 0);
+  elements.submitCartButton.disabled = state.cartItems.length === 0;
+  elements.submitCartButton.classList.toggle('opacity-60', state.cartItems.length === 0);
+
+  if (state.cartItems.length === 0) {
+    elements.cartList.innerHTML = '';
+    return;
+  }
+
+  elements.cartList.innerHTML = state.cartItems
+    .map((cartItem) => {
+      const totalItemPrice = cartItem.quantity * cartItem.price;
+      const noteText = cartItem.note ? cartItem.note : '無備註';
+
+      return `
+        <article class="cart-item">
+          <div class="cart-item-header">
+            <div>
+              <h3 class="cart-item-name">${escapeHtml(cartItem.name)}</h3>
+              <p class="cart-item-meta">${escapeHtml(cartItem.restaurant)} ・ 單價 $${cartItem.price}</p>
+            </div>
+            <div class="menu-price">$${totalItemPrice}</div>
+          </div>
+          <p class="cart-item-note">備註：${escapeHtml(noteText)}</p>
+          <div class="cart-item-footer">
+            <div class="quantity-stepper">
+              <button type="button" class="stepper-button" data-cart-action="decrease" data-cart-id="${cartItem.id}">-</button>
+              <span class="stepper-value">${cartItem.quantity}</span>
+              <button type="button" class="stepper-button" data-cart-action="increase" data-cart-id="${cartItem.id}">+</button>
+            </div>
+            <button type="button" class="ghost-button" data-cart-action="remove" data-cart-id="${cartItem.id}">移除</button>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+
+  elements.cartList.querySelectorAll('[data-cart-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const cartItemId = button.dataset.cartId;
+      const action = button.dataset.cartAction;
+
+      if (action === 'increase') {
+        updateCartItemQuantity(cartItemId, 1);
+      }
+
+      if (action === 'decrease') {
+        updateCartItemQuantity(cartItemId, -1);
+      }
+
+      if (action === 'remove') {
+        removeCartItem(cartItemId);
+      }
+    });
+  });
 }
 
 // 只取今天日期的訂單，方便做當日確認與統計，不會把舊資料混進來。
@@ -653,7 +784,7 @@ function renderMenuList() {
                     data-note-id="note-${itemKey}"
                     data-order-category="${escapeHtmlAttribute(item.category)}"
                   >
-                    點餐
+                    加入購物車
                   </button>
                 </article>
               `;
@@ -692,9 +823,11 @@ function renderMenuList() {
         category: button.dataset.orderCategory || '',
       };
 
-      const isSuccess = await submitOrder(item, noteInput?.value || '', button);
+      setActionLoading(button, true, '加入中...');
+      addItemToCart(item, noteInput?.value || '');
+      setActionLoading(button, false, '加入購物車');
 
-      if (isSuccess && noteInput) {
+      if (noteInput) {
         noteInput.value = '';
       }
     });
@@ -831,11 +964,13 @@ function resetState() {
   state.todayRestaurants = [];
   state.menuItems = [];
   state.todayOrders = [];
+  state.cartItems = [];
   state.authMode = 'interactive';
 
   elements.userBadge.classList.add('hidden');
   elements.logoutButton.classList.add('hidden');
   elements.menuList.innerHTML = '';
+  elements.cartList.innerHTML = '';
   elements.ordersList.innerHTML = '';
 }
 
@@ -976,6 +1111,7 @@ function persistSessionState() {
     restaurants: state.restaurants,
     todayRestaurants: state.todayRestaurants,
     menuItems: state.menuItems,
+    cartItems: state.cartItems,
     todayOrders: state.todayOrders.map((order) => ({
       ...order,
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
@@ -1001,6 +1137,7 @@ function restoreSessionState() {
     state.restaurants = sessionSnapshot.restaurants || [];
     state.todayRestaurants = sessionSnapshot.todayRestaurants || [];
     state.menuItems = sessionSnapshot.menuItems || [];
+    state.cartItems = sessionSnapshot.cartItems || [];
     state.todayOrders = (sessionSnapshot.todayOrders || []).map((order) => ({
       ...order,
       createdAt: parseDateTime(order.createdAt),
@@ -1030,6 +1167,14 @@ function parseGoogleSheetsSerialDate(serialNumber) {
   const millisecondsPerDay = 24 * 60 * 60 * 1000;
   const baseDate = new Date(1899, 11, 30);
   return new Date(baseDate.getTime() + serialNumber * millisecondsPerDay);
+}
+
+function createCartItemId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return `cart-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function padNumber(value) {

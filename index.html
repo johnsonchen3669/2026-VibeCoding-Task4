@@ -106,6 +106,38 @@
             </section>
 
             <div class="space-y-6">
+              <section id="cart-section" class="panel-card">
+                <div class="section-heading">
+                  <div>
+                    <p class="section-kicker">購物車</p>
+                    <h2 class="section-title">先選餐，再一次送出</h2>
+                  </div>
+                  <span id="cart-badge" class="rounded-full bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">0 項</span>
+                </div>
+                <p class="text-sm leading-6 text-slate-600">
+                  可先把多個餐點加入購物車，調整數量與備註後，再一次送出至 Orders 工作表。
+                </p>
+                <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                  <div class="stat-card">
+                    <p class="stat-label">品項總數</p>
+                    <p id="cart-item-count" class="stat-value">0</p>
+                  </div>
+                  <div class="stat-card">
+                    <p class="stat-label">購物車金額</p>
+                    <p id="cart-total-price" class="stat-value">$0</p>
+                  </div>
+                </div>
+                <div id="cart-empty-state" class="empty-state mt-6">目前尚未加入任何餐點。</div>
+                <div id="cart-list" class="mt-6 space-y-4"></div>
+                <button
+                  id="submit-cart-button"
+                  type="button"
+                  class="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  一次送出購物車
+                </button>
+              </section>
+
               <section id="admin-config" class="panel-card hidden">
                 <div class="section-heading">
                   <div>
