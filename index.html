@@ -98,6 +98,20 @@
               <p class="text-sm leading-6 text-slate-600">
                 依照 TodayConfig 工作表顯示今天開放點餐的餐廳，點擊按鈕即可直接寫入 Orders 工作表。
               </p>
+              <div id="menu-filter-bar" class="mt-5 space-y-4">
+                <div>
+                  <p class="filter-label">餐廳切換</p>
+                  <div id="restaurant-filter-list" class="filter-chip-row mt-2"></div>
+                </div>
+                <div>
+                  <p class="filter-label">分類篩選</p>
+                  <div id="category-filter-list" class="filter-chip-row mt-2"></div>
+                </div>
+                <label class="search-box">
+                  <span class="i-lucide-search h-4 w-4 text-slate-400"></span>
+                  <input id="menu-search-input" type="search" placeholder="搜尋餐點名稱或分類" />
+                </label>
+              </div>
               <div id="today-restaurants-chip" class="mt-5 flex flex-wrap gap-2"></div>
               <div id="menu-empty-state" class="empty-state mt-6 hidden">
                 目前尚未設定今日餐廳，請由管理員先完成設定。

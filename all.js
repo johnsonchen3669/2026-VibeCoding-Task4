@@ -35,6 +35,11 @@ const state = {
   menuItems: [],
   todayOrders: [],
   cartItems: [],
+  menuFilters: {
+    restaurant: '全部餐廳',
+    category: '全部分類',
+    search: '',
+  },
   isRefreshingToken: false,
   tokenRefreshPromise: null,
   authMode: 'interactive',
@@ -57,6 +62,9 @@ const elements = {
   adminConfig: document.querySelector('#admin-config'),
   restaurantCheckboxes: document.querySelector('#restaurant-checkboxes'),
   saveConfigButton: document.querySelector('#save-config-button'),
+  restaurantFilterList: document.querySelector('#restaurant-filter-list'),
+  categoryFilterList: document.querySelector('#category-filter-list'),
+  menuSearchInput: document.querySelector('#menu-search-input'),
   todayRestaurantsChip: document.querySelector('#today-restaurants-chip'),
   menuList: document.querySelector('#menu-list'),
   menuEmptyState: document.querySelector('#menu-empty-state'),
@@ -101,6 +109,7 @@ async function boot() {
       renderUserBadge();
       showOnly('app');
       renderAdminArea();
+      renderMenuFilters();
       renderTodayRestaurantChips();
       renderMenuList();
       renderCart();
@@ -134,6 +143,9 @@ function bindEvents() {
   elements.submitCartButton.addEventListener('click', submitCart);
   elements.copySummaryButton.addEventListener('click', copyOrderSummary);
   elements.clearOrdersButton.addEventListener('click', clearAllOrders);
+  elements.menuSearchInput.addEventListener('input', handleMenuSearchInput);
+  elements.restaurantFilterList.addEventListener('click', handleRestaurantFilterClick);
+  elements.categoryFilterList.addEventListener('click', handleCategoryFilterClick);
 }
 
 // 等待 Google Identity Services 腳本掛載完成，避免直接存取 window.google 時發生 undefined。
@@ -312,6 +324,7 @@ async function refreshAppData(showDoneToast = false) {
     state.todayOrders = normalizeOrders(orderRows.slice(1));
 
     renderAdminArea();
+    renderMenuFilters();
     renderTodayRestaurantChips();
     renderMenuList();
     renderCart();
@@ -740,15 +753,70 @@ function renderTodayRestaurantChips() {
     .join('');
 }
 
+function renderMenuFilters() {
+  const todaySet = new Set(state.todayRestaurants);
+  const availableMenuItems = state.menuItems.filter((item) => todaySet.has(item.restaurant));
+  const restaurantOptions = ['全部餐廳', ...new Set(availableMenuItems.map((item) => item.restaurant))];
+
+  if (!restaurantOptions.includes(state.menuFilters.restaurant)) {
+    state.menuFilters.restaurant = '全部餐廳';
+  }
+
+  const filteredForCategory = availableMenuItems.filter((item) => {
+    return state.menuFilters.restaurant === '全部餐廳' || item.restaurant === state.menuFilters.restaurant;
+  });
+  const categoryOptions = ['全部分類', ...new Set(filteredForCategory.map((item) => item.category || '未分類'))];
+
+  if (!categoryOptions.includes(state.menuFilters.category)) {
+    state.menuFilters.category = '全部分類';
+  }
+
+  elements.restaurantFilterList.innerHTML = restaurantOptions
+    .map((option) => {
+      const activeClass = option === state.menuFilters.restaurant ? ' is-active' : '';
+      return `<button type="button" class="filter-chip${activeClass}" data-filter-restaurant="${escapeHtmlAttribute(option)}">${escapeHtml(option)}</button>`;
+    })
+    .join('');
+
+  elements.categoryFilterList.innerHTML = categoryOptions
+    .map((option) => {
+      const activeClass = option === state.menuFilters.category ? ' is-active' : '';
+      return `<button type="button" class="filter-chip${activeClass}" data-filter-category="${escapeHtmlAttribute(option)}">${escapeHtml(option)}</button>`;
+    })
+    .join('');
+
+  elements.menuSearchInput.value = state.menuFilters.search;
+}
+
 // 菜單會先依餐廳分組，再依分類分組，讓畫面在餐點變多時仍然清楚好掃描。
 function renderMenuList() {
   const todaySet = new Set(state.todayRestaurants);
-  const filteredItems = state.menuItems.filter((item) => todaySet.has(item.restaurant));
+  const searchKeyword = state.menuFilters.search.trim().toLowerCase();
+  const filteredItems = state.menuItems.filter((item) => {
+    if (!todaySet.has(item.restaurant)) {
+      return false;
+    }
+
+    if (state.menuFilters.restaurant !== '全部餐廳' && item.restaurant !== state.menuFilters.restaurant) {
+      return false;
+    }
+
+    if (state.menuFilters.category !== '全部分類' && item.category !== state.menuFilters.category) {
+      return false;
+    }
+
+    if (!searchKeyword) {
+      return true;
+    }
+
+    const haystack = `${item.name} ${item.category} ${item.restaurant}`.toLowerCase();
+    return haystack.includes(searchKeyword);
+  });
 
   elements.menuEmptyState.classList.toggle('hidden', filteredItems.length > 0);
 
   if (filteredItems.length === 0) {
-    elements.menuList.innerHTML = '';
+    elements.menuList.innerHTML = '<div class="empty-state">目前沒有符合篩選條件的餐點，請調整餐廳、分類或搜尋關鍵字。</div>';
     return;
   }
 
@@ -965,6 +1033,11 @@ function resetState() {
   state.menuItems = [];
   state.todayOrders = [];
   state.cartItems = [];
+  state.menuFilters = {
+    restaurant: '全部餐廳',
+    category: '全部分類',
+    search: '',
+  };
   state.authMode = 'interactive';
 
   elements.userBadge.classList.add('hidden');
@@ -1112,6 +1185,7 @@ function persistSessionState() {
     todayRestaurants: state.todayRestaurants,
     menuItems: state.menuItems,
     cartItems: state.cartItems,
+    menuFilters: state.menuFilters,
     todayOrders: state.todayOrders.map((order) => ({
       ...order,
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
@@ -1138,6 +1212,7 @@ function restoreSessionState() {
     state.todayRestaurants = sessionSnapshot.todayRestaurants || [];
     state.menuItems = sessionSnapshot.menuItems || [];
     state.cartItems = sessionSnapshot.cartItems || [];
+    state.menuFilters = sessionSnapshot.menuFilters || state.menuFilters;
     state.todayOrders = (sessionSnapshot.todayOrders || []).map((order) => ({
       ...order,
       createdAt: parseDateTime(order.createdAt),
@@ -1175,6 +1250,38 @@ function createCartItemId() {
   }
 
   return `cart-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function handleMenuSearchInput(event) {
+  state.menuFilters.search = event.target.value;
+  renderMenuFilters();
+  renderMenuList();
+  persistSessionState();
+}
+
+function handleRestaurantFilterClick(event) {
+  const button = event.target.closest('[data-filter-restaurant]');
+  if (!button) {
+    return;
+  }
+
+  state.menuFilters.restaurant = button.dataset.filterRestaurant || '全部餐廳';
+  state.menuFilters.category = '全部分類';
+  renderMenuFilters();
+  renderMenuList();
+  persistSessionState();
+}
+
+function handleCategoryFilterClick(event) {
+  const button = event.target.closest('[data-filter-category]');
+  if (!button) {
+    return;
+  }
+
+  state.menuFilters.category = button.dataset.filterCategory || '全部分類';
+  renderMenuFilters();
+  renderMenuList();
+  persistSessionState();
 }
 
 function padNumber(value) {

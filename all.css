@@ -57,6 +57,70 @@
   background: rgba(248, 250, 252, 0.9);
 }
 
+.filter-label {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.filter-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 0.65rem 1rem;
+  background: #fff;
+  color: #475569;
+  font-size: 0.88rem;
+  font-weight: 700;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.filter-chip:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.filter-chip.is-active {
+  border-color: #fb923c;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 0.9rem 1rem;
+  background: #fff;
+}
+
+.search-box:focus-within {
+  border-color: #fb923c;
+  box-shadow: 0 0 0 4px rgba(251, 146, 60, 0.18);
+}
+
+.search-box input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #0f172a;
+}
+
+.search-box input:focus {
+  outline: none;
+}
+
 .restaurant-block + .restaurant-block {
   padding-top: 1.5rem;
   border-top: 1px solid #e2e8f0;
