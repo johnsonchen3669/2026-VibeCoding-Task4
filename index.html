@@ -80,12 +80,60 @@
         </section>
 
         <section id="app-section" class="hidden space-y-6">
+          <section id="quick-actions" class="quick-actions-panel">
+            <button type="button" class="quick-action-button is-active" data-quick-target="menu">
+              <span class="quick-action-icon i-lucide-utensils-crossed"></span>
+              <span>
+                <strong>菜單區</strong>
+                <small>先選餐廳與餐點</small>
+              </span>
+            </button>
+            <button type="button" class="quick-action-button" data-quick-target="cart">
+              <span class="quick-action-icon i-lucide-shopping-cart"></span>
+              <span>
+                <strong>購物車</strong>
+                <small id="quick-cart-count">0 項待送出</small>
+              </span>
+            </button>
+            <button type="button" class="quick-action-button" data-quick-target="orders">
+              <span class="quick-action-icon i-lucide-receipt-text"></span>
+              <span>
+                <strong>今日訂單</strong>
+                <small id="quick-order-count">0 筆已建立</small>
+              </span>
+            </button>
+            <button type="button" class="quick-action-button" data-modal-target="favorites">
+              <span class="quick-action-icon i-lucide-repeat-2"></span>
+              <span>
+                <strong>重複點餐</strong>
+                <small id="quick-favorite-count">0 個常點</small>
+              </span>
+            </button>
+            <button type="button" class="quick-action-button" data-modal-target="history">
+              <span class="quick-action-icon i-lucide-history"></span>
+              <span>
+                <strong>歷史訂單</strong>
+                <small id="quick-history-count">0 筆最近紀錄</small>
+              </span>
+            </button>
+            <button id="quick-admin-button" type="button" class="quick-action-button hidden" data-modal-target="admin">
+              <span class="quick-action-icon i-lucide-sliders-horizontal"></span>
+              <span>
+                <strong>管理設定</strong>
+                <small>設定餐廳與清空訂單</small>
+              </span>
+            </button>
+          </section>
+
           <div class="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <section class="panel-card overflow-hidden">
+            <section id="menu-section" class="panel-card overflow-hidden">
               <div class="section-heading">
-                <div>
+                <div class="section-heading-main">
+                  <span class="section-icon i-lucide-store"></span>
+                  <div>
                   <p class="section-kicker">今日菜單</p>
                   <h2 class="section-title">可直接點餐的餐點</h2>
+                  </div>
                 </div>
                 <button
                   id="refresh-button"
@@ -120,144 +168,203 @@
             </section>
 
             <div class="space-y-6">
-              <section id="cart-section" class="panel-card">
-                <div class="section-heading">
-                  <div>
-                    <p class="section-kicker">購物車</p>
-                    <h2 class="section-title">先選餐，再一次送出</h2>
-                  </div>
-                  <span id="cart-badge" class="rounded-full bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">0 項</span>
-                </div>
-                <p class="text-sm leading-6 text-slate-600">
-                  可先把多個餐點加入購物車，調整數量與備註後，再一次送出至 Orders 工作表。
-                </p>
-                <div class="mt-5 grid gap-3 sm:grid-cols-2">
-                  <div class="stat-card">
-                    <p class="stat-label">品項總數</p>
-                    <p id="cart-item-count" class="stat-value">0</p>
-                  </div>
-                  <div class="stat-card">
-                    <p class="stat-label">購物車金額</p>
-                    <p id="cart-total-price" class="stat-value">$0</p>
-                  </div>
-                </div>
-                <div id="cart-empty-state" class="empty-state mt-6">目前尚未加入任何餐點。</div>
-                <div id="cart-list" class="mt-6 space-y-4"></div>
-                <button
-                  id="submit-cart-button"
-                  type="button"
-                  class="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  一次送出購物車
-                </button>
-              </section>
-
-              <section id="admin-config" class="panel-card hidden">
-                <div class="section-heading">
-                  <div>
-                    <p class="section-kicker">管理員功能</p>
-                    <h2 class="section-title">設定今日開放餐廳</h2>
-                  </div>
-                </div>
-                <p class="text-sm leading-6 text-slate-600">
-                  先從 Menu 工作表整理出所有餐廳，再由管理員決定今天要開放哪些餐廳供同仁點餐。
-                </p>
-                <div id="restaurant-checkboxes" class="mt-5 grid gap-3 sm:grid-cols-2"></div>
-                <button
-                  id="save-config-button"
-                  type="button"
-                  class="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600"
-                >
-                  儲存今日餐廳設定
-                </button>
-              </section>
-
-              <section id="orders-section" class="panel-card">
-                <div class="section-heading">
-                  <div>
-                    <p class="section-kicker">今日訂單</p>
-                    <h2 class="section-title">確認後可一鍵複製</h2>
-                  </div>
-                  <button
-                    id="copy-summary-button"
-                    type="button"
-                    class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                  >
-                    複製摘要
+              <section id="workspace-shell" class="panel-card workspace-shell">
+                <div id="workspace-summary" class="workspace-summary-grid">
+                  <button type="button" class="workspace-summary-card" data-workspace-target="cart">
+                    <span class="workspace-summary-icon i-lucide-shopping-cart"></span>
+                    <span class="workspace-summary-label">購物車</span>
+                    <strong id="workspace-cart-count" class="workspace-summary-value">0 項</strong>
+                  </button>
+                  <button type="button" class="workspace-summary-card" data-workspace-target="orders">
+                    <span class="workspace-summary-icon i-lucide-receipt-text"></span>
+                    <span class="workspace-summary-label">今日訂單</span>
+                    <strong id="workspace-order-count" class="workspace-summary-value">0 筆</strong>
                   </button>
                 </div>
-                <p class="text-sm leading-6 text-slate-600">
-                  這裡只顯示今天的訂單資料，方便直接貼到 LINE 或其他對話工具進行確認。
-                </p>
-                <div class="mt-5 grid gap-3 sm:grid-cols-3">
-                  <div class="stat-card">
-                    <p class="stat-label">今日筆數</p>
-                    <p id="stat-order-count" class="stat-value">0</p>
-                  </div>
-                  <div class="stat-card">
-                    <p class="stat-label">今日總額</p>
-                    <p id="stat-order-total" class="stat-value">$0</p>
-                  </div>
-                  <div class="stat-card">
-                    <p class="stat-label">開放餐廳</p>
-                    <p id="stat-restaurant-count" class="stat-value">0</p>
-                  </div>
-                </div>
-                <div id="orders-empty-state" class="empty-state mt-6 hidden">今天尚未有任何訂單。</div>
-                <div id="orders-list" class="mt-6 space-y-5"></div>
-              </section>
 
-              <section id="favorites-section" class="panel-card">
-                <div class="section-heading">
-                  <div>
-                    <p class="section-kicker">我的常點</p>
-                    <h2 class="section-title">快速重複點餐</h2>
-                  </div>
+                <div id="workspace-tabs" class="workspace-tabs mt-5">
+                  <button type="button" class="workspace-tab is-active" data-workspace-target="cart">
+                    <span class="i-lucide-shopping-cart h-4 w-4"></span>
+                    購物車
+                  </button>
+                  <button type="button" class="workspace-tab" data-workspace-target="orders">
+                    <span class="i-lucide-receipt-text h-4 w-4"></span>
+                    今日訂單
+                  </button>
                 </div>
-                <p class="text-sm leading-6 text-slate-600">
-                  系統會依照您歷史訂單自動整理最常點的品項，讓常用餐點可以一鍵重新加入購物車。
-                </p>
-                <div id="favorites-empty-state" class="empty-state mt-6 hidden">目前還沒有足夠的歷史訂單資料。</div>
-                <div id="favorites-list" class="mt-6 space-y-4"></div>
-              </section>
 
-              <section id="history-section" class="panel-card">
-                <div class="section-heading">
-                  <div>
-                    <p class="section-kicker">歷史訂單</p>
-                    <h2 class="section-title">最近點過什麼</h2>
+                <section id="cart-section" class="workspace-panel" data-workspace-panel="cart">
+                  <div class="section-heading">
+                    <div class="section-heading-main">
+                      <span class="section-icon i-lucide-shopping-cart"></span>
+                      <div>
+                        <p class="section-kicker">購物車</p>
+                        <h2 class="section-title">先選餐，再一次送出</h2>
+                      </div>
+                    </div>
+                    <span id="cart-badge" class="rounded-full bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">0 項</span>
                   </div>
-                </div>
-                <p class="text-sm leading-6 text-slate-600">
-                  顯示目前登入使用者的最近訂單紀錄，方便快速確認或再點一次。
-                </p>
-                <div id="history-empty-state" class="empty-state mt-6 hidden">您目前還沒有任何歷史訂單。</div>
-                <div id="history-list" class="mt-6 space-y-4"></div>
-              </section>
+                  <p class="text-sm leading-6 text-slate-600">
+                    可先把多個餐點加入購物車，調整數量與備註後，再一次送出至 Orders 工作表。
+                  </p>
+                  <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div class="stat-card">
+                      <p class="stat-label">品項總數</p>
+                      <p id="cart-item-count" class="stat-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                      <p class="stat-label">購物車金額</p>
+                      <p id="cart-total-price" class="stat-value">$0</p>
+                    </div>
+                  </div>
+                  <div id="cart-empty-state" class="empty-state mt-6">目前尚未加入任何餐點。</div>
+                  <div id="cart-list" class="mt-6 space-y-4"></div>
+                  <button
+                    id="submit-cart-button"
+                    type="button"
+                    class="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                  >
+                    一次送出購物車
+                  </button>
+                </section>
 
-              <section id="admin-danger" class="panel-card hidden border-red-200 bg-red-50/80">
-                <div class="section-heading">
-                  <div>
-                    <p class="section-kicker text-red-500">高風險操作</p>
-                    <h2 class="section-title">清空今日點餐</h2>
+                <section id="orders-section" class="workspace-panel hidden" data-workspace-panel="orders">
+                  <div class="section-heading">
+                    <div class="section-heading-main">
+                      <span class="section-icon i-lucide-receipt-text"></span>
+                      <div>
+                        <p class="section-kicker">今日訂單</p>
+                        <h2 class="section-title">確認後可一鍵複製</h2>
+                      </div>
+                    </div>
+                    <button
+                      id="copy-summary-button"
+                      type="button"
+                      class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                    >
+                      複製摘要
+                    </button>
                   </div>
-                </div>
-                <p class="text-sm leading-6 text-red-700">
-                  這個按鈕會直接清空 Orders 工作表標題列以外的所有資料，請確認目前所有訂單都已經完成處理。
-                </p>
-                <button
-                  id="clear-orders-button"
-                  type="button"
-                  class="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-700"
-                >
-                  清空今日點餐
-                </button>
+                  <p class="text-sm leading-6 text-slate-600">
+                    這裡只顯示今天的訂單資料，方便直接貼到 LINE 或其他對話工具進行確認。
+                  </p>
+                  <div class="mt-5 grid gap-3 sm:grid-cols-3">
+                    <div class="stat-card">
+                      <p class="stat-label">今日筆數</p>
+                      <p id="stat-order-count" class="stat-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                      <p class="stat-label">今日總額</p>
+                      <p id="stat-order-total" class="stat-value">$0</p>
+                    </div>
+                    <div class="stat-card">
+                      <p class="stat-label">開放餐廳</p>
+                      <p id="stat-restaurant-count" class="stat-value">0</p>
+                    </div>
+                  </div>
+                  <div id="orders-empty-state" class="empty-state mt-6 hidden">今天尚未有任何訂單。</div>
+                  <div id="orders-list" class="mt-6 space-y-5"></div>
+                </section>
+
               </section>
             </div>
           </div>
         </section>
       </main>
     </div>
+
+    <div id="modal-backdrop" class="modal-backdrop hidden"></div>
+
+    <section id="favorites-modal" class="app-modal hidden" aria-hidden="true">
+      <div class="app-modal-card">
+        <div class="section-heading">
+          <div class="section-heading-main">
+            <span class="section-icon i-lucide-repeat-2"></span>
+            <div>
+              <p class="section-kicker">我的常點</p>
+              <h2 class="section-title">快速重複點餐</h2>
+            </div>
+          </div>
+          <button type="button" class="modal-close-button" data-modal-close>關閉</button>
+        </div>
+        <p class="text-sm leading-6 text-slate-600">
+          系統會依照您歷史訂單自動整理最常點的品項，讓常用餐點可以一鍵重新加入購物車。
+        </p>
+        <div id="favorites-empty-state" class="empty-state mt-6 hidden">目前還沒有足夠的歷史訂單資料。</div>
+        <div id="favorites-list" class="mt-6 space-y-4"></div>
+      </div>
+    </section>
+
+    <section id="history-modal" class="app-modal hidden" aria-hidden="true">
+      <div class="app-modal-card">
+        <div class="section-heading">
+          <div class="section-heading-main">
+            <span class="section-icon i-lucide-history"></span>
+            <div>
+              <p class="section-kicker">歷史訂單</p>
+              <h2 class="section-title">最近點過什麼</h2>
+            </div>
+          </div>
+          <button type="button" class="modal-close-button" data-modal-close>關閉</button>
+        </div>
+        <p class="text-sm leading-6 text-slate-600">
+          顯示目前登入使用者的最近訂單紀錄，方便快速確認或再點一次。
+        </p>
+        <div id="history-empty-state" class="empty-state mt-6 hidden">您目前還沒有任何歷史訂單。</div>
+        <div id="history-list" class="mt-6 space-y-4"></div>
+      </div>
+    </section>
+
+    <section id="admin-modal" class="app-modal hidden" aria-hidden="true">
+      <div class="app-modal-card app-modal-card-wide">
+        <div class="section-heading">
+          <div class="section-heading-main">
+            <span class="section-icon i-lucide-sliders-horizontal"></span>
+            <div>
+              <p class="section-kicker">管理員功能</p>
+              <h2 class="section-title">餐廳設定與風險操作</h2>
+            </div>
+          </div>
+          <button type="button" class="modal-close-button" data-modal-close>關閉</button>
+        </div>
+
+        <section id="admin-config" class="modal-section hidden">
+          <p class="text-sm leading-6 text-slate-600">
+            先從 Menu 工作表整理出所有餐廳，再由管理員決定今天要開放哪些餐廳供同仁點餐。
+          </p>
+          <div id="restaurant-checkboxes" class="mt-5 grid gap-3 sm:grid-cols-2"></div>
+          <button
+            id="save-config-button"
+            type="button"
+            class="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600"
+          >
+            儲存今日餐廳設定
+          </button>
+        </section>
+
+        <section id="admin-danger" class="modal-section hidden border-red-200 bg-red-50/80">
+          <div class="section-heading">
+            <div class="section-heading-main">
+              <span class="section-icon i-lucide-triangle-alert"></span>
+              <div>
+                <p class="section-kicker text-red-500">高風險操作</p>
+                <h3 class="section-title text-[1.1rem]">清空今日點餐</h3>
+              </div>
+            </div>
+          </div>
+          <p class="text-sm leading-6 text-red-700">
+            這個按鈕會直接清空 Orders 工作表標題列以外的所有資料，請確認目前所有訂單都已經完成處理。
+          </p>
+          <button
+            id="clear-orders-button"
+            type="button"
+            class="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-700"
+          >
+            清空今日點餐
+          </button>
+        </section>
+      </div>
+    </section>
 
     <div id="toast" class="toast"></div>
 

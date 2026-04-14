@@ -40,6 +40,8 @@ const state = {
     category: '全部分類',
     search: '',
   },
+  activeWorkspacePanel: 'cart',
+  activeModal: '',
   isRefreshingToken: false,
   tokenRefreshPromise: null,
   authMode: 'interactive',
@@ -56,6 +58,17 @@ const elements = {
   logoutButton: document.querySelector('#logout-button'),
   logoutUnauthorizedButton: document.querySelector('#logout-unauthorized-button'),
   refreshButton: document.querySelector('#refresh-button'),
+  quickActions: document.querySelector('#quick-actions'),
+  quickCartCount: document.querySelector('#quick-cart-count'),
+  quickOrderCount: document.querySelector('#quick-order-count'),
+  quickFavoriteCount: document.querySelector('#quick-favorite-count'),
+  quickHistoryCount: document.querySelector('#quick-history-count'),
+  quickAdminButton: document.querySelector('#quick-admin-button'),
+  menuSection: document.querySelector('#menu-section'),
+  workspaceShell: document.querySelector('#workspace-shell'),
+  workspaceTabs: document.querySelector('#workspace-tabs'),
+  workspaceCartCount: document.querySelector('#workspace-cart-count'),
+  workspaceOrderCount: document.querySelector('#workspace-order-count'),
   userBadge: document.querySelector('#user-badge'),
   userName: document.querySelector('#user-name'),
   userRole: document.querySelector('#user-role'),
@@ -86,7 +99,14 @@ const elements = {
   statOrderCount: document.querySelector('#stat-order-count'),
   statOrderTotal: document.querySelector('#stat-order-total'),
   statRestaurantCount: document.querySelector('#stat-restaurant-count'),
+  modalBackdrop: document.querySelector('#modal-backdrop'),
+  favoritesModal: document.querySelector('#favorites-modal'),
+  historyModal: document.querySelector('#history-modal'),
+  adminModal: document.querySelector('#admin-modal'),
   toast: document.querySelector('#toast'),
+  workspacePanels: [...document.querySelectorAll('[data-workspace-panel]')],
+  workspaceTargets: [...document.querySelectorAll('[data-workspace-target]')],
+  modalCloseButtons: [...document.querySelectorAll('[data-modal-close]')],
 };
 
 let toastTimer = null;
@@ -151,6 +171,11 @@ function bindEvents() {
   elements.menuSearchInput.addEventListener('input', handleMenuSearchInput);
   elements.restaurantFilterList.addEventListener('click', handleRestaurantFilterClick);
   elements.categoryFilterList.addEventListener('click', handleCategoryFilterClick);
+  elements.quickActions.addEventListener('click', handleQuickActionClick);
+  elements.workspaceShell.addEventListener('click', handleWorkspaceTargetClick);
+  elements.modalBackdrop.addEventListener('click', closeActiveModal);
+  elements.modalCloseButtons.forEach((button) => button.addEventListener('click', closeActiveModal));
+  document.addEventListener('keydown', handleGlobalKeydown);
 }
 
 // 等待 Google Identity Services 腳本掛載完成，避免直接存取 window.google 時發生 undefined。
@@ -600,6 +625,7 @@ function renderCart() {
   elements.cartEmptyState.classList.toggle('hidden', state.cartItems.length > 0);
   elements.submitCartButton.disabled = state.cartItems.length === 0;
   elements.submitCartButton.classList.toggle('opacity-60', state.cartItems.length === 0);
+  renderWorkspaceOverview();
 
   if (state.cartItems.length === 0) {
     elements.cartList.innerHTML = '';
@@ -712,8 +738,12 @@ function renderAdminArea() {
   const adminMode = isAdmin();
   elements.adminConfig.classList.toggle('hidden', !adminMode);
   elements.adminDanger.classList.toggle('hidden', !adminMode);
+  elements.quickAdminButton.classList.toggle('hidden', !adminMode);
 
   if (!adminMode) {
+    if (state.activeModal === 'admin') {
+      closeActiveModal();
+    }
     return;
   }
 
@@ -918,6 +948,7 @@ function renderOrdersSummary() {
   elements.statOrderTotal.textContent = `$${totalAmount}`;
   elements.statRestaurantCount.textContent = String(state.todayRestaurants.length);
   elements.ordersEmptyState.classList.toggle('hidden', orders.length > 0);
+  renderWorkspaceOverview();
 
   if (orders.length === 0) {
     elements.ordersList.innerHTML = '';
@@ -957,6 +988,22 @@ function renderPersonalOrderPanels() {
   const myOrders = getCurrentUserOrders();
   renderFavoriteItems(myOrders);
   renderOrderHistory(myOrders);
+  renderWorkspaceOverview(myOrders);
+}
+
+function renderWorkspaceOverview(myOrders = getCurrentUserOrders()) {
+  const totalQuantity = state.cartItems.reduce((sum, cartItem) => sum + cartItem.quantity, 0);
+  const todayOrderCount = getTodayOrders().length;
+  const favoriteCount = getFavoriteItems(myOrders).length;
+  const historyCount = Math.min(myOrders.length, 8);
+
+  elements.quickCartCount.textContent = `${totalQuantity} 項待送出`;
+  elements.quickOrderCount.textContent = `${todayOrderCount} 筆已建立`;
+  elements.quickFavoriteCount.textContent = `${favoriteCount} 個常點`;
+  elements.quickHistoryCount.textContent = `${historyCount} 筆最近紀錄`;
+  elements.workspaceCartCount.textContent = `${totalQuantity} 項`;
+  elements.workspaceOrderCount.textContent = `${todayOrderCount} 筆`;
+  setActiveWorkspacePanel(state.activeWorkspacePanel, { persist: false });
 }
 
 function renderFavoriteItems(myOrders) {
@@ -1084,6 +1131,141 @@ function showOnly(sectionName) {
   });
 }
 
+function handleQuickActionClick(event) {
+  const modalButton = event.target.closest('[data-modal-target]');
+  if (modalButton) {
+    openModal(modalButton.dataset.modalTarget || '');
+    return;
+  }
+
+  const button = event.target.closest('[data-quick-target]');
+  if (!button) {
+    return;
+  }
+
+  const target = button.dataset.quickTarget;
+
+  elements.quickActions.querySelectorAll('[data-quick-target]').forEach((item) => {
+    item.classList.toggle('is-active', item === button);
+  });
+
+  if (target === 'menu') {
+    closeActiveModal();
+    elements.menuSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
+  setActiveWorkspacePanel(target, { scroll: true });
+}
+
+function handleWorkspaceTargetClick(event) {
+  const button = event.target.closest('[data-workspace-target]');
+  if (!button) {
+    return;
+  }
+
+  closeActiveModal();
+  setActiveWorkspacePanel(button.dataset.workspaceTarget, { scroll: true });
+}
+
+function setActiveWorkspacePanel(panelName, options = {}) {
+  const { scroll = false, persist = true } = options;
+  const availablePanels = new Set(elements.workspacePanels.map((panel) => panel.dataset.workspacePanel));
+  const nextPanel = availablePanels.has(panelName) ? panelName : 'cart';
+
+  state.activeWorkspacePanel = nextPanel;
+
+  elements.workspacePanels.forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.workspacePanel !== nextPanel);
+  });
+
+  elements.workspaceTargets.forEach((button) => {
+    const isActive = button.dataset.workspaceTarget === nextPanel;
+    button.classList.toggle('is-active', isActive);
+  });
+
+  elements.quickActions.querySelectorAll('[data-quick-target]').forEach((button) => {
+    const isActive = button.dataset.quickTarget === nextPanel;
+    button.classList.toggle('is-active', isActive);
+  });
+
+  elements.quickActions.querySelectorAll('[data-modal-target]').forEach((button) => {
+    button.classList.remove('is-active');
+  });
+
+  if (persist) {
+    persistSessionState();
+  }
+
+  if (scroll) {
+    elements.workspaceShell?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function openModal(modalName) {
+  const modalMap = {
+    favorites: elements.favoritesModal,
+    history: elements.historyModal,
+    admin: elements.adminModal,
+  };
+
+  const targetModal = modalMap[modalName];
+  if (!targetModal) {
+    return;
+  }
+
+  if (modalName === 'admin' && !isAdmin()) {
+    showToast('只有管理員可以使用這個功能。', true);
+    return;
+  }
+
+  state.activeModal = modalName;
+  elements.modalBackdrop.classList.remove('hidden');
+  Object.entries(modalMap).forEach(([name, modal]) => {
+    const shouldShow = name === modalName;
+    modal.classList.toggle('hidden', !shouldShow);
+    modal.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+  });
+
+  elements.quickActions.querySelectorAll('[data-quick-target]').forEach((button) => {
+    button.classList.remove('is-active');
+  });
+
+  elements.quickActions.querySelectorAll('[data-modal-target]').forEach((button) => {
+    const isActive = button.dataset.modalTarget === modalName;
+    button.classList.toggle('is-active', isActive);
+  });
+
+  document.body.style.overflow = 'hidden';
+}
+
+function closeActiveModal() {
+  if (!state.activeModal) {
+    return;
+  }
+
+  state.activeModal = '';
+  elements.modalBackdrop.classList.add('hidden');
+  [elements.favoritesModal, elements.historyModal, elements.adminModal].forEach((modal) => {
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  });
+
+  elements.quickActions.querySelectorAll('[data-modal-target]').forEach((button) => {
+    button.classList.remove('is-active');
+  });
+
+  setActiveWorkspacePanel(state.activeWorkspacePanel, { persist: false });
+
+  document.body.style.overflow = '';
+}
+
+function handleGlobalKeydown(event) {
+  if (event.key === 'Escape' && state.activeModal) {
+    closeActiveModal();
+  }
+}
+
 // 所有主要操作按鈕都透過同一個 helper 切換 disabled 與按鈕文案，避免使用者重複點擊。
 function setActionLoading(button, isLoading, loadingText) {
   if (!button) {
@@ -1148,6 +1330,8 @@ function resetState() {
     category: '全部分類',
     search: '',
   };
+  state.activeWorkspacePanel = 'cart';
+  state.activeModal = '';
   state.authMode = 'interactive';
 
   elements.userBadge.classList.add('hidden');
@@ -1157,6 +1341,8 @@ function resetState() {
   elements.ordersList.innerHTML = '';
   elements.favoritesList.innerHTML = '';
   elements.historyList.innerHTML = '';
+  closeActiveModal();
+  renderWorkspaceOverview([]);
 }
 
 // 將 Menu 工作表轉成易用的物件結構，並且過濾掉缺少必要欄位的髒資料。
@@ -1298,6 +1484,7 @@ function persistSessionState() {
     menuItems: state.menuItems,
     cartItems: state.cartItems,
     menuFilters: state.menuFilters,
+    activeWorkspacePanel: state.activeWorkspacePanel,
     todayOrders: state.todayOrders.map((order) => ({
       ...order,
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
@@ -1325,6 +1512,7 @@ function restoreSessionState() {
     state.menuItems = sessionSnapshot.menuItems || [];
     state.cartItems = sessionSnapshot.cartItems || [];
     state.menuFilters = sessionSnapshot.menuFilters || state.menuFilters;
+    state.activeWorkspacePanel = sessionSnapshot.activeWorkspacePanel || 'cart';
     state.todayOrders = (sessionSnapshot.todayOrders || []).map((order) => ({
       ...order,
       createdAt: parseDateTime(order.createdAt),
