@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
   "devDependencies": {
     "@iconify-json/lucide": "^1.2.102",
@@ -14,6 +16,7 @@
     "@unocss/preset-uno": "^66.5.2",
     "@unocss/reset": "^66.6.8",
     "@unocss/vite": "^66.5.2",
+    "gh-pages": "^6.3.0",
     "unocss": "^66.5.2",
     "vite": "^7.1.0"
   }
