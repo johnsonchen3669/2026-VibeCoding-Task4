@@ -36,7 +36,7 @@ const state = {
   todayOrders: [],
   cartItems: [],
   menuFilters: {
-    restaurant: '全部餐廳',
+    restaurant: '',
     category: '全部分類',
     search: '',
   },
@@ -78,6 +78,8 @@ const elements = {
   restaurantFilterList: document.querySelector('#restaurant-filter-list'),
   categoryFilterList: document.querySelector('#category-filter-list'),
   menuSearchInput: document.querySelector('#menu-search-input'),
+  menuFocusTitle: document.querySelector('#menu-focus-title'),
+  menuFocusMeta: document.querySelector('#menu-focus-meta'),
   todayRestaurantsChip: document.querySelector('#today-restaurants-chip'),
   menuList: document.querySelector('#menu-list'),
   menuEmptyState: document.querySelector('#menu-empty-state'),
@@ -792,14 +794,14 @@ function renderTodayRestaurantChips() {
 function renderMenuFilters() {
   const todaySet = new Set(state.todayRestaurants);
   const availableMenuItems = state.menuItems.filter((item) => todaySet.has(item.restaurant));
-  const restaurantOptions = ['全部餐廳', ...new Set(availableMenuItems.map((item) => item.restaurant))];
+  const restaurantOptions = [...new Set(availableMenuItems.map((item) => item.restaurant))];
 
   if (!restaurantOptions.includes(state.menuFilters.restaurant)) {
-    state.menuFilters.restaurant = '全部餐廳';
+    state.menuFilters.restaurant = restaurantOptions[0] || '';
   }
 
   const filteredForCategory = availableMenuItems.filter((item) => {
-    return state.menuFilters.restaurant === '全部餐廳' || item.restaurant === state.menuFilters.restaurant;
+    return !state.menuFilters.restaurant || item.restaurant === state.menuFilters.restaurant;
   });
   const categoryOptions = ['全部分類', ...new Set(filteredForCategory.map((item) => item.category || '未分類'))];
 
@@ -822,6 +824,15 @@ function renderMenuFilters() {
     .join('');
 
   elements.menuSearchInput.value = state.menuFilters.search;
+  renderMenuFocusBar(filteredForCategory);
+}
+
+function renderMenuFocusBar(filteredItems) {
+  const restaurantName = state.menuFilters.restaurant || '今天尚未選擇餐廳';
+  const categoryCount = new Set(filteredItems.map((item) => item.category || '未分類')).size;
+
+  elements.menuFocusTitle.textContent = restaurantName;
+  elements.menuFocusMeta.textContent = `${filteredItems.length} 道餐點 ・ ${categoryCount} 個分類`;
 }
 
 // 菜單會先依餐廳分組，再依分類分組，讓畫面在餐點變多時仍然清楚好掃描。
@@ -833,7 +844,7 @@ function renderMenuList() {
       return false;
     }
 
-    if (state.menuFilters.restaurant !== '全部餐廳' && item.restaurant !== state.menuFilters.restaurant) {
+    if (state.menuFilters.restaurant && item.restaurant !== state.menuFilters.restaurant) {
       return false;
     }
 
@@ -856,64 +867,58 @@ function renderMenuList() {
     return;
   }
 
-  const restaurantGroups = groupBy(filteredItems, (item) => item.restaurant);
-  const restaurantHtml = [...restaurantGroups.entries()]
-    .map(([restaurant, restaurantItems]) => {
-      const categoryGroups = groupBy(restaurantItems, (item) => item.category || '未分類');
-      const categoryHtml = [...categoryGroups.entries()]
-        .map(([category, categoryItems]) => {
-          const cardsHtml = categoryItems
-            .map((item) => {
-              const itemKey = encodeURIComponent(`${item.restaurant}__${item.name}`);
-              return `
-                <article class="menu-card">
-                  <div class="menu-card-header">
-                    <div>
-                      <h4 class="menu-name">${escapeHtml(item.name)}</h4>
-                      <p class="menu-meta">${escapeHtml(category)}</p>
-                    </div>
-                    <span class="menu-price">$${item.price}</span>
-                  </div>
-                  <textarea
-                    id="note-${itemKey}"
-                    class="note-input"
-                    placeholder="例如：少飯、微糖少冰、不要香菜"
-                  ></textarea>
-                  <button
-                    type="button"
-                    class="order-button"
-                    data-order-restaurant="${escapeHtmlAttribute(item.restaurant)}"
-                    data-order-name="${escapeHtmlAttribute(item.name)}"
-                    data-order-price="${item.price}"
-                    data-note-id="note-${itemKey}"
-                    data-order-category="${escapeHtmlAttribute(item.category)}"
-                  >
-                    加入購物車
-                  </button>
-                </article>
-              `;
-            })
-            .join('');
-
+  const activeRestaurant = state.menuFilters.restaurant || filteredItems[0]?.restaurant || '';
+  const categoryGroups = groupBy(filteredItems, (item) => item.category || '未分類');
+  const categoryHtml = [...categoryGroups.entries()]
+    .map(([category, categoryItems]) => {
+      const cardsHtml = categoryItems
+        .map((item) => {
+          const itemKey = encodeURIComponent(`${item.restaurant}__${item.name}`);
           return `
-            <div class="space-y-3">
-              <h3 class="category-title">${escapeHtml(category)}</h3>
-              <div class="menu-grid">${cardsHtml}</div>
-            </div>
+            <article class="menu-card">
+              <div class="menu-card-header">
+                <div>
+                  <h4 class="menu-name">${escapeHtml(item.name)}</h4>
+                  <p class="menu-meta">${escapeHtml(category)}</p>
+                </div>
+                <span class="menu-price">$${item.price}</span>
+              </div>
+              <textarea
+                id="note-${itemKey}"
+                class="note-input"
+                placeholder="例如：少飯、微糖少冰、不要香菜"
+              ></textarea>
+              <button
+                type="button"
+                class="order-button"
+                data-order-restaurant="${escapeHtmlAttribute(item.restaurant)}"
+                data-order-name="${escapeHtmlAttribute(item.name)}"
+                data-order-price="${item.price}"
+                data-note-id="note-${itemKey}"
+                data-order-category="${escapeHtmlAttribute(item.category)}"
+              >
+                加入購物車
+              </button>
+            </article>
           `;
         })
         .join('');
 
       return `
-        <section class="restaurant-block">
-          <h3 class="restaurant-title">${escapeHtml(restaurant)}</h3>
-          <div class="mt-4 space-y-5">${categoryHtml}</div>
-        </section>
+        <div class="space-y-3">
+          <h3 class="category-title">${escapeHtml(category)}</h3>
+          <div class="menu-grid">${cardsHtml}</div>
+        </div>
       `;
     })
     .join('');
 
-  elements.menuList.innerHTML = restaurantHtml;
+  elements.menuList.innerHTML = `
+    <section class="restaurant-block">
+      <h3 class="restaurant-title">${escapeHtml(activeRestaurant)}</h3>
+      <div class="mt-4 space-y-5">${categoryHtml}</div>
+    </section>
+  `;
 
   elements.menuList.querySelectorAll('.order-button').forEach((button) => {
     button.addEventListener('click', async () => {
@@ -1326,7 +1331,7 @@ function resetState() {
   state.todayOrders = [];
   state.cartItems = [];
   state.menuFilters = {
-    restaurant: '全部餐廳',
+    restaurant: '',
     category: '全部分類',
     search: '',
   };
@@ -1565,7 +1570,7 @@ function handleRestaurantFilterClick(event) {
     return;
   }
 
-  state.menuFilters.restaurant = button.dataset.filterRestaurant || '全部餐廳';
+  state.menuFilters.restaurant = button.dataset.filterRestaurant || '';
   state.menuFilters.category = '全部分類';
   renderMenuFilters();
   renderMenuList();
